@@ -1,12 +1,17 @@
+import os
 import numpy as np
-import xarray as xr # opening netcdf files as labeled multidimensional arrays
-import pandas as pd
+import xarray as xr
 import subprocess
 import matplotlib.pyplot as plt
 import cftime
 from scipy.stats import linregress
+import warnings
 
 def sea_ice_correlations(independent_var, saving):
+    # Suppress FutureWarnings
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    # Suppress SerializationWarnings
+    warnings.filterwarnings("ignore", category=xr.SerializationWarning)
     
     # Create path structure for .nc files
     simon_base_path = '/glade/collections/cmip/CMIP6/CMIP/NOAA-GFDL/GFDL-ESM4/historical/r1i1p1f1/SImon/'
@@ -43,6 +48,9 @@ def sea_ice_correlations(independent_var, saving):
 
             # Append the dataset to a list of all of the datasets
             ds_avg_list.append(ds)
+
+            # Print status update
+            print('Imported {}'.format(var))
         except:
             # In the case that the try fails, just skip it and keep going
             continue
@@ -66,48 +74,43 @@ def sea_ice_correlations(independent_var, saving):
     ds_indep = ds_indep.sel(time=time_range)
     x = ds_indep.groupby('time.month').mean('time',skipna=1).mean('lon',skipna=1).mean('lat',skipna=1)[independent_var]
 
-    # Calculate number of rows and columns for subplots
-    num_plots = len(ds_avg_list)
-    num_cols = 1  # Number of columns in subplot grid
-    num_rows = num_plots // num_cols + (1 if num_plots % num_cols > 0 else 0)  # Calculate number of rows
-
-    # Calculate figure size based on number of rows and columns
-    fig_width = 10 * num_cols
-    fig_height = 8 * num_rows
-
-    # Create the figure and subplots
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(fig_width, fig_height))
+    # Conditionally create directory to save figures
+    if saving:
+        save_folder = 'SImon_vars_vs_{}'.format(indep_title)
+        os.makedirs(save_folder, exist_ok=True)
 
     # Plot linear regressions between variables
-    for i, ax in enumerate(axes.flat):
-        if i < num_plots:
-            # Perform linear regression on the two variables
-            y = ds_avg_list[i]
-            slope, intercept = np.polyfit(x, y, 1)
+    for i in range(len(ds_avg_list)):
+        # Create a new figure for each plot
+        plt.figure()
 
-            # Create a regression line and calculate a linear regression
-            regression_line = slope * x + intercept
-            lin_regression = linregress(x, y)
-            r = lin_regression[2]
+        # Perform linear regression on the two variables
+        y = ds_avg_list[i]
+        slope, intercept = np.polyfit(x, y, 1)
 
-            # Plot linear regression
-            ax.scatter(x=x, y=y)
-            ax.set_xlabel(indep_title + ' ' + indep_units)
-            ax.set_ylabel(ds_list[i].long_name + ' [' + ds_list[i].units + ']')
-            ax.set_title(ds_list[i].long_name + ' vs ' + indep_title)
-            ax.plot(x, regression_line, color='red', label='Linear Regression, r = {:.3f}'.format(r))
-            ax.legend()
-            ax.grid()
+        # Create a regression line and calculate a linear regression
+        regression_line = slope * x + intercept
+        lin_regression = linregress(x, y)
+        r = lin_regression[2]
 
-    # Adjust layout
-    plt.tight_layout()
+        # Plot linear regression
+        plt.scatter(x=x, y=y)
+        plt.xlabel(indep_title + ' ' + indep_units)
+        plt.ylabel(ds_list[i].long_name + ' [' + ds_list[i].units + ']')
+        plt.title(ds_list[i].long_name + ' vs ' + indep_title)
+        plt.plot(x, regression_line, color='red', label='Linear Regression, r = {:.3f}'.format(r))
+        plt.legend()
+        plt.grid()
 
-    # Conditionally save figure
-    if saving:
-        filename = './SImon_vars_vs_{}.png'.format(indep_title)
-        plt.savefig(filename)
+        # Conditionally save figure
+        if saving:
+            filename = os.path.join(save_folder, '{}_vs_{}.png'.format(simon_vars[i], indep_title))
+            plt.savefig(filename)
+        # If not saving, show the figure (in the Jupyter notebook)
+        else:
+            plt.show()
+        # Close the figure to release memory
+        plt.close()
 
-    # Show plot
-    plt.show()
-
+# Call the function
 sea_ice_correlations('tos', saving=True)
